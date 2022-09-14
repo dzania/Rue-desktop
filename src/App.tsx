@@ -44,7 +44,6 @@ function App() {
 			</Router>
 		</div>
 	);
->>>>>>> Stashed changes
 }
 
 export default App;
