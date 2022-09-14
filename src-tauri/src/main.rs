@@ -14,6 +14,7 @@ use std::{
 };
 use tokio::sync::mpsc;
 
+
 const CONFIG_DIR: &str = ".config/rue";
 const CONFIG_NAME: &str = "rue.json";
 
@@ -63,6 +64,8 @@ fn load() -> Result<User, String> {
 pub struct Bridge {
     internalipaddress: String,
 }
+
+
 /// Find bridges using mdns method
 /// https://developers.meethue.com/develop/application-design-guidance/hue-bridge-discovery/#mDNS
 #[tauri::command]
