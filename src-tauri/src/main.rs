@@ -5,8 +5,143 @@
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
+<<<<<<< Updated upstream
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+=======
+async fn save(user: User) -> Result<(), String> {
+    let config_file_path = get_config_path()?;
+    let mut file = fs::File::create(&config_file_path).map_err(|e| e.to_string())?;
+
+    let json: String = serde_json::to_string(&user).map_err(|e| e.to_string())?;
+
+    file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+// Load User used for api calls
+#[tauri::command]
+fn load() -> Result<User, String> {
+    let file_path = get_config_path()?;
+    let file = fs::File::open(file_path).map_err(|e| e.to_string())?;
+    let reader = BufReader::new(file);
+    let user = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
+
+    Ok(user)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Bridge {
+    internalipaddress: String,
+}
+/// Find bridges using mdns method
+/// https://developers.meethue.com/develop/application-design-guidance/hue-bridge-discovery/#mDNS
+#[tauri::command]
+async fn mdns_discovery() -> Result<Vec<Bridge>, String> {
+    const SERVICE_NAME: &'static str = "_hue._tcp.local";
+    let stream = mdns::discover::all(SERVICE_NAME, Duration::from_millis(10))
+        .map_err(|e| e.to_string())?
+        .listen();
+    pin_mut!(stream);
+    let mut bridges = vec![];
+    while let Some(Ok(response)) = stream.next().await {
+        println!("{:#?}", response);
+        let addr = response.records().filter_map(to_ip_addr).next();
+
+        if let Some(addr) = addr {
+            println!("Found bridge at {}", addr);
+            bridges.push(Bridge {
+                internalipaddress: addr.to_string(),
+            });
+            break;
+        } else {
+            println!("Can't find any bridges");
+        }
+    }
+    Ok(bridges)
+}
+fn to_ip_addr(record: &mdns::Record) -> Option<IpAddr> {
+    match record.kind {
+        mdns::RecordKind::A(addr) => Some(addr.into()),
+        mdns::RecordKind::AAAA(addr) => Some(addr.into()),
+        _ => None,
+    }
+}
+// find bridges using discovery url
+#[tauri::command]
+async fn find_bridges() -> Result<Vec<Bridge>, String> {
+    let request: Vec<Bridge> = reqwest::get("https://discovery.meethue.com/")
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    if request.is_empty() {
+        return Err("No bridges found".to_string());
+    }
+    Ok(request)
+}
+
+// Send parallel requests to all bridges found
+pub async fn create_user(bridges: Vec<Bridge>) -> Result<(), String> {
+    // Poll bridge for minute
+    for _ in 1..25 {
+        let (tx, mut rx) = mpsc::channel(4);
+        let requests = stream::iter(bridges.clone())
+            .map(|bridge| {
+                tokio::spawn(async move { authorize_user_request(&bridge.internalipaddress).await })
+            })
+            .buffer_unordered(bridges.len());
+
+        requests
+            .for_each(|b| async {
+                match b {
+                    Ok(Ok(b)) => {
+                        let _ = tx.send(b).await;
+                    }
+                    // FIXME: Shouldn't print to std
+                    Ok(Err(e)) => println!("Got a reqwest::Error: {:?}", e),
+                    Err(e) => println!("Error: {}", e),
+                }
+            })
+            .await;
+
+        if let Some(user) = rx.recv().await {
+            save(user).await?;
+            break;
+        };
+        thread::sleep(Duration::from_secs(5));
+    }
+    Ok(())
+}
+
+/// Send request to bridge to get User
+pub async fn authorize_user_request(ip: &str) -> Result<User, ()> {
+    let address = format!("http://{}/api", ip);
+    let client = Client::new();
+    let mut body = HashMap::new();
+    body.insert("devicetype", "rue_pc_app");
+    let resp = client
+        .post(&address)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|_| ())?;
+    let data = resp.text().await.map_err(|_| ())?;
+    let value: Value = serde_json::from_str(&data).unwrap();
+
+    match value[0].get("success") {
+        Some(message) => {
+            let username: String = serde_json::from_value(message.to_owned()).unwrap();
+            let user = User {
+                username,
+                bridge_address: ip.into(),
+            };
+            Ok(user)
+        }
+        None => Err(()),
+    }
+>>>>>>> Stashed changes
 }
 
 fn main() {
