@@ -1,8 +1,3 @@
-#![cfg_attr(
-    all(not(debug_assertions), target_os = "windows"),
-    windows_subsystem = "windows"
-)]
-
 use futures::{pin_mut, stream, StreamExt};
 use mdns;
 use reqwest::Client;
@@ -18,6 +13,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc;
+
 
 const CONFIG_DIR: &str = ".config/rue";
 const CONFIG_NAME: &str = "rue.json";
@@ -68,6 +64,8 @@ fn load() -> Result<User, String> {
 pub struct Bridge {
     internalipaddress: String,
 }
+
+
 /// Find bridges using mdns method
 /// https://developers.meethue.com/develop/application-design-guidance/hue-bridge-discovery/#mDNS
 #[tauri::command]
