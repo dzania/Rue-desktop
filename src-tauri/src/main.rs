@@ -1,14 +1,43 @@
-#![cfg_attr(
-    all(not(debug_assertions), target_os = "windows"),
-    windows_subsystem = "windows"
-)]
+use futures::{pin_mut, stream, StreamExt};
+use mdns;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::{
+    collections::HashMap,
+    fs,
+    io::{BufReader, Write},
+    net::IpAddr,
+    path::{Path, PathBuf},
+    thread,
+    time::Duration,
+};
+use tokio::sync::mpsc;
 
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
+const CONFIG_DIR: &str = ".config/rue";
+const CONFIG_NAME: &str = "rue.json";
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct User {
+    pub username: String,
+    pub bridge_address: String,
+}
+
+fn get_config_path() -> Result<PathBuf, String> {
+    match dirs::home_dir() {
+        Some(home) => {
+            let config_dir_path = Path::new(&home.join(CONFIG_DIR)).to_owned();
+            if !config_dir_path.exists() {
+                fs::create_dir(&config_dir_path).map_err(|e| e.to_string())?;
+            };
+            Ok(config_dir_path.join(CONFIG_NAME))
+        }
+        None => Err("No $HOME directory found for config".into()),
+    }
+}
+
+// Store User used for api calls
 #[tauri::command]
-<<<<<<< Updated upstream
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-=======
 async fn save(user: User) -> Result<(), String> {
     let config_file_path = get_config_path()?;
     let mut file = fs::File::create(&config_file_path).map_err(|e| e.to_string())?;
@@ -49,13 +78,13 @@ async fn mdns_discovery() -> Result<Vec<Bridge>, String> {
         let addr = response.records().filter_map(to_ip_addr).next();
 
         if let Some(addr) = addr {
-            println!("Found bridge at {}", addr);
+            println!("found cast device at {}", addr);
             bridges.push(Bridge {
                 internalipaddress: addr.to_string(),
             });
             break;
         } else {
-            println!("Can't find any bridges");
+            println!("cast device does not advertise address");
         }
     }
     Ok(bridges)
@@ -141,12 +170,16 @@ pub async fn authorize_user_request(ip: &str) -> Result<User, ()> {
         }
         None => Err(()),
     }
->>>>>>> Stashed changes
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet])
+        .invoke_handler(tauri::generate_handler![
+            save,
+            load,
+            find_bridges,
+            mdns_discovery
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
